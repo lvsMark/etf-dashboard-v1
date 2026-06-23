@@ -211,7 +211,7 @@ function chartConfig(labels,datasets){
         }
       },
       scales:{
-        x:{ grid:{color:'rgba(51,65,85,0.4)'}, ticks:{maxTicksLimit:8,maxRotation:0,callback:function(val){ const l=this.getLabelForValue(val); return l?l.slice(0,7):''; }} },
+        x:{ grid:{color:'rgba(51,65,85,0.4)'}, ticks:{maxTicksLimit:8,maxRotation:0,callback:function(val){ const l=this.getLabelForValue(val); return l?l.slice(0,10):''; }} },
         y:{ grid:{color:'rgba(51,65,85,0.4)'}, position:'right', ticks:{callback:v=>v>=1000?(v/1000).toFixed(1)+'K':v.toFixed(1)} }
       }
     }
