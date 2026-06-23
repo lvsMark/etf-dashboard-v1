@@ -41,8 +41,12 @@
   .chart-wrap-sm { position: relative; height: 200px; }
   .perf-table-wrap { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  th { color: var(--text2); font-weight: 600; padding: 8px 10px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--text2); font-weight: 600; padding: 8px 10px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; cursor: pointer; user-select: none; }
   th:first-child { text-align: left; }
+  th:hover { color: var(--text); }
+  th.sort-asc, th.sort-desc { color: var(--accent); }
+  th.sort-asc::after { content: " ▲"; font-size: 9px; }
+  th.sort-desc::after { content: " ▼"; font-size: 9px; }
   td { padding: 7px 10px; text-align: right; border-bottom: 1px solid rgba(51,65,85,0.5); white-space: nowrap; }
   td:first-child { text-align: left; color: var(--text); font-weight: 500; }
   tr:hover td { background: var(--surface2); }
@@ -235,15 +239,44 @@ function toggleDataset(chartKey,dsIdx){
   ch.update();
 }
 
-function renderPerfTable(tabId,tickers){
-  const tbody=document.getElementById(`table_${tabId}`);
+const tableSortState = {};
+
+function renderPerfTable(tabId, tickers, sortCol, sortDir){
+  const tbody = document.getElementById(`table_${tabId}`);
   if(!tbody) return;
-  tbody.innerHTML=tickers.map(t=>{
-    const name=RAW.names[t]||t;
-    const lat=fmtVal(getLatestVal(t));
-    const cells=TF_LABELS.map(p=>{const r=fmtPerf(calcPerf(t,p));return `<td class="${r.cls}">${r.text}</td>`;}).join('');
-    return `<tr><td>${name}</td><td class="neu">${lat}</td>${cells}</tr>`;
+
+  // Build row data
+  const cols = ['name', 'latest', ...TF_LABELS];
+  let rows = tickers.map(t => {
+    const perfs = TF_LABELS.map(p => calcPerf(t, p));
+    return { ticker: t, name: RAW.names[t]||t, latest: getLatestVal(t), perfs };
+  });
+
+  // Sort
+  if(sortCol !== undefined && sortCol !== null) {
+    rows.sort((a, b) => {
+      let av, bv;
+      if(sortCol === 0) { av = a.name; bv = b.name; return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av); }
+      if(sortCol === 1) { av = a.latest ?? -Infinity; bv = b.latest ?? -Infinity; }
+      else { av = a.perfs[sortCol-2] ?? -Infinity; bv = b.perfs[sortCol-2] ?? -Infinity; }
+      return sortDir === 'asc' ? av - bv : bv - av;
+    });
+  }
+
+  tbody.innerHTML = rows.map(r => {
+    const lat = fmtVal(r.latest);
+    const cells = r.perfs.map(v => { const f = fmtPerf(v); return `<td class="${f.cls}">${f.text}</td>`; }).join('');
+    return `<tr><td>${r.name}</td><td class="neu">${lat}</td>${cells}</tr>`;
   }).join('');
+
+  // Update header sort indicators
+  const thead = tbody.closest('table').querySelector('thead tr');
+  if(thead) {
+    [...thead.querySelectorAll('th')].forEach((th, i) => {
+      th.classList.remove('sort-asc','sort-desc');
+      if(i === sortCol) th.classList.add(sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+    });
+  }
 }
 
 function renderIndividualChart(ticker,canvasId,tf,scale){
@@ -279,7 +312,9 @@ function renderTab(tabId){
   </div>`;
   html+=`<div class="section"><div class="section-title">Performance Summary</div>
     <div class="perf-table-wrap"><table>
-      <thead><tr><th>ETF</th><th>Latest (mn units)</th>${TF_LABELS.map(p=>`<th>${p}</th>`).join('')}</tr></thead>
+      <thead><tr>
+        ${['ETF','Latest (mn units)',...TF_LABELS].map((h,i)=>`<th onclick="sortPerfTable('${tabId}',${i})">${h}</th>`).join('')}
+      </tr></thead>
       <tbody id="table_${tabId}"></tbody>
     </table></div>
   </div>`;
@@ -345,6 +380,13 @@ function updateIndScale(ticker,cid,scale,btn){
   btn.closest('.btn-group').querySelectorAll('.scale-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
   renderIndividualChart(ticker,cid,indState[k].tf,scale);
+}
+
+function sortPerfTable(tabId, colIdx){
+  const state = tableSortState[tabId] || { col: null, dir: 'desc' };
+  const newDir = (state.col === colIdx && state.dir === 'desc') ? 'asc' : 'desc';
+  tableSortState[tabId] = { col: colIdx, dir: newDir };
+  renderPerfTable(tabId, TABS_CONFIG[tabId].tickers, colIdx, newDir);
 }
 
 function switchTab(tabId,btn){
