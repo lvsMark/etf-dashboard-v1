@@ -294,7 +294,7 @@ function calcMA(values, period) {
   });
 }
 
-function renderIndividualChart(ticker, canvasId, tf, scale, showMA5, showMA10){
+function renderIndividualChart(ticker, canvasId, tf, scale, showMA5, showMA10, showMA20){
   const key = `ind_${canvasId}`;
   if(chartInstances[key]) chartInstances[key].destroy();
 
@@ -321,20 +321,23 @@ function renderIndividualChart(ticker, canvasId, tf, scale, showMA5, showMA10){
 
   const ma5All  = calcMA(extVals, 5);
   const ma10All = calcMA(extVals, 10);
+  const ma20All = calcMA(extVals, 20);
 
   // Trim back to the actual window
   const trimStart = allIdxs[0] - lookback;
   const labels  = allIdxs.map(i => DATES[i]);
   const vals    = allIdxs.map(i => extVals[i - lookback]);
   const ma5     = allIdxs.map(i => ma5All[i - lookback]);
+  const ma20    = allIdxs.map(i => ma20All[i - lookback]);
   const ma10    = allIdxs.map(i => ma10All[i - lookback]);
 
   const ds = makeDataset(ticker, 0, vals, RAW.names[ticker]||ticker);
   ds.fill = true;
 
   const datasets = [ds];
-  if(showMA5 !== false) datasets.push({ label:'MA5', data:ma5, borderColor:'#facc15', backgroundColor:'transparent', borderWidth:1.5, borderDash:[4,2], pointRadius:0, tension:0.1, spanGaps:true });
-  if(showMA10 !== false) datasets.push({ label:'MA10', data:ma10, borderColor:'#f472b6', backgroundColor:'transparent', borderWidth:1.5, borderDash:[6,3], pointRadius:0, tension:0.1, spanGaps:true });
+  if(showMA5  !== false) datasets.push({ label:'MA5',  data:ma5,  borderColor:'#94a3b8', backgroundColor:'transparent', borderWidth:1.5, borderDash:[4,2], pointRadius:0, tension:0.1, spanGaps:true });
+  if(showMA10 !== false) datasets.push({ label:'MA10', data:ma10, borderColor:'#facc15', backgroundColor:'transparent', borderWidth:1.5, borderDash:[6,3], pointRadius:0, tension:0.1, spanGaps:true });
+  if(showMA20 !== false) datasets.push({ label:'MA20', data:ma20, borderColor:'#f87171', backgroundColor:'transparent', borderWidth:1.5, borderDash:[8,4], pointRadius:0, tension:0.1, spanGaps:true });
 
   const canvas = document.getElementById(canvasId);
   if(!canvas) return;
@@ -382,8 +385,9 @@ function renderTab(tabId){
         </div>
         <div class="divider"></div>
         <div class="btn-group">
-          <button class="scale-btn active" id="ma5_${cid}" onclick="toggleMA('${ticker}','${cid}','ma5',this)" style="color:#facc15">MA5</button>
-          <button class="scale-btn active" id="ma10_${cid}" onclick="toggleMA('${ticker}','${cid}','ma10',this)" style="color:#f472b6">MA10</button>
+          <button class="scale-btn active" id="ma5_${cid}" onclick="toggleMA('${ticker}','${cid}','ma5',this)" style="color:#94a3b8">MA5</button>
+          <button class="scale-btn active" id="ma10_${cid}" onclick="toggleMA('${ticker}','${cid}','ma10',this)" style="color:#facc15">MA10</button>
+          <button class="scale-btn active" id="ma20_${cid}" onclick="toggleMA('${ticker}','${cid}','ma20',this)" style="color:#f87171">MA20</button>
         </div>
       </div>
       <div class="chart-wrap-sm"><canvas id="${cid}"></canvas></div>
@@ -396,7 +400,7 @@ function renderTab(tabId){
     renderPerfTable(tabId,tickers);
     tickers.forEach(ticker=>{
       const cid=`ic_${tabId}_${ticker.replace(/[^a-zA-Z0-9]/g,'_')}`;
-      renderIndividualChart(ticker,cid,'1Y','rebase',true,true);
+      renderIndividualChart(ticker,cid,'1Y','rebase',true,true,true);
     });
   });
 }
@@ -419,27 +423,27 @@ function updateCombinedScale(tabId,scale,btn){
 }
 
 const indState={};
-function getIndState(k){ if(!indState[k]) indState[k]={tf:'1Y',scale:'rebase',ma5:true,ma10:true}; return indState[k]; }
+function getIndState(k){ if(!indState[k]) indState[k]={tf:'1Y',scale:'rebase',ma5:true,ma10:true,ma20:true}; return indState[k]; }
 
 function updateIndChart(ticker,cid,tf,btn){
   const s=getIndState(ticker+'_'+cid); s.tf=tf;
   btn.closest('.btn-group').querySelectorAll('.tf-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
-  renderIndividualChart(ticker,cid,s.tf,s.scale,s.ma5,s.ma10);
+  renderIndividualChart(ticker,cid,s.tf,s.scale,s.ma5,s.ma10,s.ma20);
 }
 
 function updateIndScale(ticker,cid,scale,btn){
   const s=getIndState(ticker+'_'+cid); s.scale=scale;
   btn.closest('.btn-group').querySelectorAll('.scale-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
-  renderIndividualChart(ticker,cid,s.tf,s.scale,s.ma5,s.ma10);
+  renderIndividualChart(ticker,cid,s.tf,s.scale,s.ma5,s.ma10,s.ma20);
 }
 
 function toggleMA(ticker,cid,maKey,btn){
   const s=getIndState(ticker+'_'+cid);
   s[maKey]=!s[maKey];
   btn.classList.toggle('active', s[maKey]);
-  renderIndividualChart(ticker,cid,s.tf,s.scale,s.ma5,s.ma10);
+  renderIndividualChart(ticker,cid,s.tf,s.scale,s.ma5,s.ma10,s.ma20);
 }
 
 function sortPerfTable(tabId, colIdx){
@@ -492,19 +496,20 @@ function renderSinglePage(ticker) {
         </div>
         <div class="divider"></div>
         <div class="btn-group">
-          <button class="scale-btn active" id="sma5" onclick="updateSingleMA('${ticker}','ma5',this)" style="color:#facc15">MA5</button>
-          <button class="scale-btn active" id="sma10" onclick="updateSingleMA('${ticker}','ma10',this)" style="color:#f472b6">MA10</button>
+          <button class="scale-btn active" id="sma5" onclick="updateSingleMA('${ticker}','ma5',this)" style="color:#94a3b8">MA5</button>
+          <button class="scale-btn active" id="sma10" onclick="updateSingleMA('${ticker}','ma10',this)" style="color:#facc15">MA10</button>
+          <button class="scale-btn active" id="sma20" onclick="updateSingleMA('${ticker}','ma20',this)" style="color:#f87171">MA20</button>
         </div>
       </div>
       <div class="single-chart-wrap"><canvas id="${cid}"></canvas></div>
     </div>`;
   document.body.appendChild(wrap);
 
-  const singleState = { tf: '1Y', scale: 'rebase', ma5: true, ma10: true };
+  const singleState = { tf: '1Y', scale: 'rebase', ma5: true, ma10: true, ma20: true };
   window._singleState = singleState;
 
   function redraw() {
-    renderIndividualChart(ticker, cid, singleState.tf, singleState.scale, singleState.ma5, singleState.ma10);
+    renderIndividualChart(ticker, cid, singleState.tf, singleState.scale, singleState.ma5, singleState.ma10, singleState.ma20);
   }
 
   window.updateSingle = (t, tf, btn) => {
