@@ -279,16 +279,60 @@ function renderPerfTable(tabId, tickers, sortCol, sortDir){
   }
 }
 
-function renderIndividualChart(ticker,canvasId,tf,scale){
-  const key=`ind_${canvasId}`;
+function calcMA(values, period) {
+  return values.map((_, i) => {
+    if (i < period - 1) return null;
+    const window = values.slice(i - period + 1, i + 1);
+    if (window.some(v => v === null)) return null;
+    return Math.round(window.reduce((a, b) => a + b, 0) / period * 100) / 100;
+  });
+}
+
+function renderIndividualChart(ticker, canvasId, tf, scale, showMA5, showMA10){
+  const key = `ind_${canvasId}`;
   if(chartInstances[key]) chartInstances[key].destroy();
-  const idxs=getDateRange(tf);
-  const labels=idxs.map(i=>DATES[i]);
-  const ds=makeDataset(ticker,0,getSlice(ticker,idxs,scale),RAW.names[ticker]||ticker);
-  ds.fill=true;
-  const canvas=document.getElementById(canvasId);
+
+  // Get full data to compute MA from a wider window, then slice
+  const allVals = RAW.etfs[ticker] || [];
+  const allIdxs = getDateRange(tf);
+
+  // To compute accurate MAs at the start of the window, look back up to 10 extra points
+  const startIdx = allIdxs[0];
+  const lookback = Math.max(0, startIdx - 10);
+  const extIdxs = [];
+  for(let i = lookback; i <= allIdxs[allIdxs.length-1]; i++) extIdxs.push(i);
+
+  // Get raw values over extended range
+  let extVals = extIdxs.map(i => allVals[i] ?? null);
+
+  // Rebase if needed — rebase to the start of the actual window
+  if(scale === 'rebase') {
+    const baseIdx = allIdxs[0] - lookback;
+    let base = null;
+    for(let i = baseIdx; i < extVals.length; i++) { if(extVals[i] !== null && extVals[i] > 0) { base = extVals[i]; break; } }
+    if(base !== null) extVals = extVals.map(v => v !== null ? Math.round(v / base * 10000) / 100 : null);
+  }
+
+  const ma5All  = calcMA(extVals, 5);
+  const ma10All = calcMA(extVals, 10);
+
+  // Trim back to the actual window
+  const trimStart = allIdxs[0] - lookback;
+  const labels  = allIdxs.map(i => DATES[i]);
+  const vals    = allIdxs.map(i => extVals[i - lookback]);
+  const ma5     = allIdxs.map(i => ma5All[i - lookback]);
+  const ma10    = allIdxs.map(i => ma10All[i - lookback]);
+
+  const ds = makeDataset(ticker, 0, vals, RAW.names[ticker]||ticker);
+  ds.fill = true;
+
+  const datasets = [ds];
+  if(showMA5 !== false) datasets.push({ label:'MA5', data:ma5, borderColor:'#facc15', backgroundColor:'transparent', borderWidth:1.5, borderDash:[4,2], pointRadius:0, tension:0.1, spanGaps:true });
+  if(showMA10 !== false) datasets.push({ label:'MA10', data:ma10, borderColor:'#f472b6', backgroundColor:'transparent', borderWidth:1.5, borderDash:[6,3], pointRadius:0, tension:0.1, spanGaps:true });
+
+  const canvas = document.getElementById(canvasId);
   if(!canvas) return;
-  chartInstances[key]=new Chart(canvas.getContext('2d'),chartConfig(labels,[ds]));
+  chartInstances[key] = new Chart(canvas.getContext('2d'), chartConfig(labels, datasets));
 }
 
 function renderTab(tabId){
@@ -330,6 +374,11 @@ function renderTab(tabId){
           <button class="scale-btn active" onclick="updateIndScale('${ticker}','${cid}','rebase',this)">R100</button>
           <button class="scale-btn" onclick="updateIndScale('${ticker}','${cid}','units',this)">Units</button>
         </div>
+        <div class="divider"></div>
+        <div class="btn-group">
+          <button class="scale-btn active" id="ma5_${cid}" onclick="toggleMA('${ticker}','${cid}','ma5',this)" style="color:#facc15">MA5</button>
+          <button class="scale-btn active" id="ma10_${cid}" onclick="toggleMA('${ticker}','${cid}','ma10',this)" style="color:#f472b6">MA10</button>
+        </div>
       </div>
       <div class="chart-wrap-sm"><canvas id="${cid}"></canvas></div>
     </div>`;
@@ -341,7 +390,7 @@ function renderTab(tabId){
     renderPerfTable(tabId,tickers);
     tickers.forEach(ticker=>{
       const cid=`ic_${tabId}_${ticker.replace(/[^a-zA-Z0-9]/g,'_')}`;
-      renderIndividualChart(ticker,cid,'1Y','rebase');
+      renderIndividualChart(ticker,cid,'1Y','rebase',true,true);
     });
   });
 }
@@ -364,22 +413,27 @@ function updateCombinedScale(tabId,scale,btn){
 }
 
 const indState={};
+function getIndState(k){ if(!indState[k]) indState[k]={tf:'1Y',scale:'rebase',ma5:true,ma10:true}; return indState[k]; }
+
 function updateIndChart(ticker,cid,tf,btn){
-  const k=ticker+'_'+cid;
-  if(!indState[k]) indState[k]={tf:'1Y',scale:'rebase'};
-  indState[k].tf=tf;
+  const s=getIndState(ticker+'_'+cid); s.tf=tf;
   btn.closest('.btn-group').querySelectorAll('.tf-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
-  renderIndividualChart(ticker,cid,tf,indState[k].scale);
+  renderIndividualChart(ticker,cid,s.tf,s.scale,s.ma5,s.ma10);
 }
 
 function updateIndScale(ticker,cid,scale,btn){
-  const k=ticker+'_'+cid;
-  if(!indState[k]) indState[k]={tf:'1Y',scale:'rebase'};
-  indState[k].scale=scale;
+  const s=getIndState(ticker+'_'+cid); s.scale=scale;
   btn.closest('.btn-group').querySelectorAll('.scale-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
-  renderIndividualChart(ticker,cid,indState[k].tf,scale);
+  renderIndividualChart(ticker,cid,s.tf,s.scale,s.ma5,s.ma10);
+}
+
+function toggleMA(ticker,cid,maKey,btn){
+  const s=getIndState(ticker+'_'+cid);
+  s[maKey]=!s[maKey];
+  btn.classList.toggle('active', s[maKey]);
+  renderIndividualChart(ticker,cid,s.tf,s.scale,s.ma5,s.ma10);
 }
 
 function sortPerfTable(tabId, colIdx){
