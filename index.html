@@ -55,7 +55,13 @@
   .neu { color: var(--text2); }
   .charts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 14px; }
   .chart-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
-  .chart-card-title { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+  .chart-card-title { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }
+  .expand-btn { background: none; border: 1px solid var(--border); border-radius: 4px; color: var(--text2); cursor: pointer; padding: 2px 6px; font-size: 11px; line-height: 1.4; transition: all 0.12s; }
+  .expand-btn:hover { color: var(--accent); border-color: var(--accent); }
+  /* Single-chart full-page mode */
+  .single-mode header { position: static; }
+  .single-mode .single-wrap { padding: 20px 24px; }
+  .single-mode .single-chart-wrap { position: relative; height: calc(100vh - 220px); min-height: 400px; }
   .chart-card-controls { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; flex-wrap: wrap; }
   .chart-card-controls .tf-btn, .chart-card-controls .scale-btn { font-size: 10px; padding: 3px 7px; }
   .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
@@ -366,7 +372,7 @@ function renderTab(tabId){
   tickers.forEach(ticker=>{
     const cid=`ic_${tabId}_${ticker.replace(/[^a-zA-Z0-9]/g,'_')}`;
     html+=`<div class="chart-card">
-      <div class="chart-card-title">${RAW.names[ticker]||ticker}</div>
+      <div class="chart-card-title"><span>${RAW.names[ticker]||ticker}</span><button class="expand-btn" onclick="openSingle('${ticker}')" title="Open full page">&#x26F6;</button></div>
       <div class="chart-card-controls">
         <div class="btn-group">${TF_LABELS.map(tf=>`<button class="tf-btn ${tf==='1Y'?'active':''}" onclick="updateIndChart('${ticker}','${cid}','${tf}',this)">${tf}</button>`).join('')}</div>
         <div class="divider"></div>
@@ -451,7 +457,84 @@ function switchTab(tabId,btn){
   renderTab(tabId);
 }
 
-renderTab('commodity');
+function openSingle(ticker) {
+  const url = location.pathname + '?single=' + encodeURIComponent(ticker);
+  window.open(url, '_blank');
+}
+
+// ── Single-chart full-page mode ──────────────────────────────────────────────
+function renderSinglePage(ticker) {
+  document.body.classList.add('single-mode');
+  const name = RAW.names[ticker] || ticker;
+
+  // Replace entire body content
+  document.querySelector('header h1').textContent = name;
+  document.querySelector('header span').textContent = 'ETF Outstanding Units Dashboard';
+
+  // Hide tab nav + panels
+  document.querySelector('.tabs-nav').style.display = 'none';
+  document.querySelectorAll('.tab-panel').forEach(p => p.remove());
+
+  const cid = 'single_chart';
+  const wrap = document.createElement('div');
+  wrap.className = 'single-wrap';
+  wrap.innerHTML = `
+    <div class="section">
+      <div class="section-title">${name}</div>
+      <div class="controls">
+        <div class="btn-group">
+          ${TF_LABELS.map(tf => `<button class="tf-btn ${tf==='1Y'?'active':''}" onclick="updateSingle('${ticker}','${tf}',this)">${tf}</button>`).join('')}
+        </div>
+        <div class="divider"></div>
+        <div class="btn-group">
+          <button class="scale-btn active" onclick="updateSingleScale('${ticker}','rebase',this)">Rebase 100</button>
+          <button class="scale-btn" onclick="updateSingleScale('${ticker}','units',this)">Units</button>
+        </div>
+        <div class="divider"></div>
+        <div class="btn-group">
+          <button class="scale-btn active" id="sma5" onclick="updateSingleMA('${ticker}','ma5',this)" style="color:#facc15">MA5</button>
+          <button class="scale-btn active" id="sma10" onclick="updateSingleMA('${ticker}','ma10',this)" style="color:#f472b6">MA10</button>
+        </div>
+      </div>
+      <div class="single-chart-wrap"><canvas id="${cid}"></canvas></div>
+    </div>`;
+  document.body.appendChild(wrap);
+
+  const singleState = { tf: '1Y', scale: 'rebase', ma5: true, ma10: true };
+  window._singleState = singleState;
+
+  function redraw() {
+    renderIndividualChart(ticker, cid, singleState.tf, singleState.scale, singleState.ma5, singleState.ma10);
+  }
+
+  window.updateSingle = (t, tf, btn) => {
+    singleState.tf = tf;
+    btn.closest('.btn-group').querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    redraw();
+  };
+  window.updateSingleScale = (t, scale, btn) => {
+    singleState.scale = scale;
+    btn.closest('.btn-group').querySelectorAll('.scale-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    redraw();
+  };
+  window.updateSingleMA = (t, maKey, btn) => {
+    singleState[maKey] = !singleState[maKey];
+    btn.classList.toggle('active', singleState[maKey]);
+    redraw();
+  };
+
+  requestAnimationFrame(redraw);
+}
+
+// Check for single-chart mode
+const _singleTicker = new URLSearchParams(location.search).get('single');
+if (_singleTicker && RAW.etfs[_singleTicker]) {
+  renderSinglePage(_singleTicker);
+} else {
+  renderTab('commodity');
+}
 </script>
 </body>
 </html>
